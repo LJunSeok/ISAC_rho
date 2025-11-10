@@ -21,70 +21,23 @@ def setup_matplotlib():
     plt.rcParams['figure.dpi'] = 100
 
 
-def plot_pareto_curves(
-    metrics_dynamic: pd.DataFrame,
-    metrics_fixed_sweep: Dict[float, pd.DataFrame],
+def plot_pareto_curves_multi_lambda_real(
+    lambda_configs: Dict[float, Dict],
     save_path: Path
 ):
     """
-    Plot Pareto curves comparing dynamic-ρ vs fixed-ρ.
+    Plot Pareto curves for multiple lambda values with REAL evaluation data.
     
     Args:
-        metrics_dynamic: DataFrame with columns [sum_rate, crb_trace]
-        metrics_fixed_sweep: Dict mapping rho_value -> DataFrame
+        lambda_configs: Dict mapping lambda -> {
+            'all_points': DataFrame with all evaluated points,
+            'pareto': DataFrame with Pareto frontier points,
+            'dynamic': DataFrame with dynamic-rho metrics
+        }
         save_path: Path to save figure
     """
     setup_matplotlib()
-    fig, ax = plt.subplots()
-    
-    # Plot fixed-rho points
-    fixed_rates = []
-    fixed_crbs = []
-    fixed_rhos = []
-    for rho_val, df in sorted(metrics_fixed_sweep.items()):
-        fixed_rates.append(df['sum_rate'].mean())
-        fixed_crbs.append(df['crb_trace'].mean())
-        fixed_rhos.append(rho_val)
-    
-    ax.scatter(fixed_crbs, fixed_rates, c='blue', marker='o', s=100,
-               label='Fixed-ρ', alpha=0.6, edgecolors='black')
-    
-    # Add labels for fixed-rho points
-    for i, rho in enumerate(fixed_rhos):
-        ax.annotate(f'ρ={rho:.2f}', (fixed_crbs[i], fixed_rates[i]),
-                   xytext=(5, 5), textcoords='offset points', fontsize=8)
-    
-    # Plot dynamic-rho point
-    dyn_rate = metrics_dynamic['sum_rate'].mean()
-    dyn_crb = metrics_dynamic['crb_trace'].mean()
-    ax.scatter([dyn_crb], [dyn_rate], c='red', marker='*', s=300,
-               label='Dynamic-ρ', edgecolors='black', zorder=10)
-    
-    ax.set_xlabel('CRB Trace (sensing cost)', fontweight='bold')
-    ax.set_ylabel('Sum Rate (bits/s/Hz)', fontweight='bold')
-    ax.set_title('Pareto Frontier: Dynamic-ρ vs Fixed-ρ', fontweight='bold')
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    plt.close()
-
-def plot_pareto_curves_multi_lambda(
-    lambda_configs: Dict[float, Tuple[pd.DataFrame, Dict[float, pd.DataFrame]]],
-    save_path: Path
-):
-    """
-    Plot Pareto curves for multiple lambda values with inverted axes.
-    
-    Args:
-        lambda_configs: Dict mapping lambda -> (dynamic_metrics, fixed_sweep)
-            - dynamic_metrics: DataFrame with columns [sum_rate, crb_trace]
-            - fixed_sweep: Dict mapping rho_value -> DataFrame
-        save_path: Path to save figure
-    """
-    setup_matplotlib()
-    fig, ax = plt.subplots(figsize=(10, 8))
+    fig, ax = plt.subplots(figsize=(11, 8))
     
     # Define colors for each lambda
     colors = {
@@ -95,55 +48,59 @@ def plot_pareto_curves_multi_lambda(
     
     # Plot each lambda configuration
     for lambda_val in sorted(lambda_configs.keys()):
-        metrics_dynamic, metrics_fixed_sweep = lambda_configs[lambda_val]
+        data = lambda_configs[lambda_val]
         color = colors.get(lambda_val, 'gray')
         
-        # Plot fixed-rho curve (connected dots)
-        fixed_rates = []
-        fixed_crbs = []
-        fixed_rhos = []
-        for rho_val, df in sorted(metrics_fixed_sweep.items()):
-            fixed_rates.append(df['sum_rate'].mean())
-            fixed_crbs.append(df['crb_trace'].mean())
-            fixed_rhos.append(rho_val)
+        all_points = data['all_points']
+        pareto_points = data['pareto']
+        dynamic_metrics = data['dynamic']
         
-        # Plot line connecting fixed-rho points
-        ax.plot(fixed_crbs, fixed_rates, color=color, linestyle='-', linewidth=2, 
-               alpha=0.5, label=f'Fixed-ρ (λ={lambda_val})')
+        # Plot all evaluated fixed-rho points (small dots)
+        ax.scatter(all_points['crb_trace'], all_points['sum_rate'], 
+                  c=color, marker='o', s=30, alpha=0.3, edgecolors='none')
         
-        # Plot fixed-rho dots
-        ax.scatter(fixed_crbs, fixed_rates, c=color, marker='o', s=60,
-                  alpha=0.7, edgecolors='black', linewidth=0.5)
+        # Plot Pareto frontier (connected line with larger dots)
+        if len(pareto_points) > 0:
+            ax.plot(pareto_points['crb_trace'], pareto_points['sum_rate'],
+                   color=color, linestyle='-', linewidth=2.5, alpha=0.8,
+                   label=f'Pareto (λ={lambda_val})')
+            ax.scatter(pareto_points['crb_trace'], pareto_points['sum_rate'],
+                      c=color, marker='o', s=100, alpha=0.9, 
+                      edgecolors='black', linewidth=1)
         
         # Plot dynamic-rho point (star)
-        dyn_rate = metrics_dynamic['sum_rate'].mean()
-        dyn_crb = metrics_dynamic['crb_trace'].mean()
-        ax.scatter([dyn_crb], [dyn_rate], c=color, marker='*', s=400,
-                  label=f'Dynamic-ρ (λ={lambda_val})', 
-                  edgecolors='black', linewidth=1.5, zorder=10)
+        dyn_rate = dynamic_metrics['sum_rate'].mean()
+        dyn_crb = dynamic_metrics['crb_trace'].mean()
+        ax.scatter([dyn_crb], [dyn_rate], c=color, marker='*', s=500,
+                  label=f'Dynamic-ρ (λ={lambda_val})',
+                  edgecolors='black', linewidth=2, zorder=10)
     
     # Invert x-axis so (0,0) is at bottom-right
     ax.invert_xaxis()
     
     # Labels and styling
-    ax.set_xlabel('CRB Trace (sensing cost) →', fontweight='bold', fontsize=13)
+    ax.set_xlabel('CRB Trace (sensing cost) ←', fontweight='bold', fontsize=13)
     ax.set_ylabel('Sum Rate (bits/s/Hz) →', fontweight='bold', fontsize=13)
-    ax.set_title('Pareto Frontier: Dynamic-ρ vs Fixed-ρ\n(Multiple Trade-off Parameters)', 
+    ax.set_title('Pareto Frontier: Dynamic-ρ vs Fixed-ρ\n(Real Evaluations, Multiple Trade-offs)', 
                 fontweight='bold', fontsize=14)
     
-    # Legend
-    ax.legend(loc='upper right', fontsize=10, framealpha=0.95, ncol=1)
-    ax.grid(True, alpha=0.3)
+    # Legend with better organization
+    handles, labels = ax.get_legend_handles_labels()
+    ax.legend(handles, labels, loc='upper right', fontsize=10, 
+             framealpha=0.95, ncol=1, markerscale=0.8)
+    ax.grid(True, alpha=0.3, linestyle='--')
     
-    # Add annotation explaining inverted axis
-    ax.text(0.02, 0.02, 'Better →', transform=ax.transAxes,
-           fontsize=9, style='italic', alpha=0.6,
-           verticalalignment='bottom', horizontalalignment='left')
+    # Add arrow annotation
+    ax.annotate('Better\n(minimize CRB,\nmaximize Rate)', 
+               xy=(0.98, 0.02), xycoords='axes fraction',
+               fontsize=9, style='italic', alpha=0.6,
+               verticalalignment='bottom', horizontalalignment='right',
+               bbox=dict(boxstyle='round,pad=0.5', facecolor='yellow', alpha=0.2))
     
     plt.tight_layout()
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
     plt.close()
-
+    
 def plot_rho_histogram(rho_values: np.ndarray, save_path: Path):
     """
     Plot histogram of learned ρ(n) values.
