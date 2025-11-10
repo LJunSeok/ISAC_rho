@@ -16,7 +16,7 @@ def train_lambda_model(lambda_val: float, seed: int = 42):
         "python", "-m", "src.train_dynamic_rho",
         "--lambda", str(lambda_val),
         "--alpha", "0.05",
-        "--epochs", "2",
+        "--epochs", "20",
         "--seed", str(seed)
     ])
     

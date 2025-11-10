@@ -221,7 +221,7 @@ def run_M_sweep():
     print("Sweeping M (Number of Sensing Targets)")
     print("="*60)
     
-    M_values = [4, 8, 12]#, 16, 20, 24]
+    M_values = [4, 8, 12, 16, 20, 24]
     methods = ["Proposed Method", "Fixed-ρ", "Oracle-ρ", "EKF Baseline"]
     base_path = Path("results")
     
@@ -231,8 +231,43 @@ def run_M_sweep():
     for M in M_values:
         print(f"\nM = {M}")
         
-        # Load model trained for this M
-        model, sys_config, train_config = load_model_for_params(M=M, base_path=base_path)
+            
+        # Special case: M=16 uses baseline checkpoint
+        if M == 16:
+            print("  Using baseline checkpoint (M=16 is default)")
+            checkpoint_name = get_checkpoint_name(
+                alpha_chatter=0.05,
+                lambda_trade=0.5,
+                seed=42
+            )
+            checkpoint_path = base_path / 'checkpoints' / checkpoint_name
+            
+            if checkpoint_path.exists():
+                sys_config = SystemConfig()  # M=16 by default
+                model_config = ModelConfig()
+                train_config = TrainingConfig()
+                
+                input_dim_sense = sys_config.M * sys_config.Nr * sys_config.Nt * 2
+                input_dim_comm = sys_config.K * sys_config.Nr * sys_config.Nt * 2
+                
+                backbone = DualStreamBackbone(
+                    input_dim_sense, input_dim_comm,
+                    model_config.cnn_channels, model_config.lstm_hidden,
+                    model_config.lstm_layers, model_config.attn_heads,
+                    model_config.dropout
+                )
+                
+                model = ISACModel(backbone, sys_config)
+                load_checkpoint(model, None, checkpoint_path)
+                print(f"  Loaded: {checkpoint_name}")
+            else:
+                print(f"  ERROR: Baseline not found")
+                model = None
+                sys_config = None
+                train_config = None
+        else:
+            # Load model trained for this M
+            model, sys_config, train_config = load_model_for_params(M=M, base_path=base_path)
         
         # Skip this M value if model not found (except for EKF which doesn't need a model)
         if model is None:
@@ -278,7 +313,7 @@ def run_K_sweep():
     print("Sweeping K (Number of Communication Users)")
     print("="*60)
     
-    K_values = [2, 4, 6]#, 8, 10]
+    K_values = [2, 4, 6, 8, 10]
     methods = ["Proposed Method", "Fixed-ρ", "Oracle-ρ", "EKF Baseline"]
     base_path = Path("results")
     
@@ -288,8 +323,41 @@ def run_K_sweep():
     for K in K_values:
         print(f"\nK = {K}")
         
-        # Load model trained for this K
-        model, sys_config, train_config = load_model_for_params(K=K, base_path=base_path)
+        if K == 4:
+            print("  Using baseline checkpoint (K=4 is default)")
+            checkpoint_name = get_checkpoint_name(
+                alpha_chatter=0.05,
+                lambda_trade=0.5,
+                seed=42
+            )
+            checkpoint_path = base_path / 'checkpoints' / checkpoint_name
+            
+            if checkpoint_path.exists():
+                sys_config = SystemConfig()
+                model_config = ModelConfig()
+                train_config = TrainingConfig()
+                
+                input_dim_sense = sys_config.M * sys_config.Nr * sys_config.Nt * 2
+                input_dim_comm = sys_config.K * sys_config.Nr * sys_config.Nt * 2
+                
+                backbone = DualStreamBackbone(
+                    input_dim_sense, input_dim_comm,
+                    model_config.cnn_channels, model_config.lstm_hidden,
+                    model_config.lstm_layers, model_config.attn_heads,
+                    model_config.dropout
+                )
+                
+                model = ISACModel(backbone, sys_config)
+                load_checkpoint(model, None, checkpoint_path)
+                print(f"  Loaded: {checkpoint_name}")
+            else:
+                print(f"  ERROR: Baseline not found")
+                model = None
+                sys_config = None
+                train_config = None
+        else:
+            # Load model trained for this K
+            model, sys_config, train_config = load_model_for_params(K=K, base_path=base_path)
         
         # Skip this K value if model not found (except for EKF)
         if model is None:
@@ -333,12 +401,12 @@ def run_Ptx_sweep():
     print("Sweeping Ptx (Transmit Power)")
     print("="*60)
     
-    Ptx_values = [1.0, 2.0, 5.0] #[0.1, 0.5, 
+    Ptx_values = [0.1, 0.5, 1.0, 2.0, 3.0, 4.0, 5.0]
     methods = ["Proposed Method", "Fixed-ρ", "Oracle-ρ", "EKF Baseline"]
     base_path = Path("results")
     
     # Load default model (M=16, K=4)
-    model, base_sys_config, train_config = load_model_for_params(K=4, base_path=base_path)
+    model, base_sys_config, train_config = load_model_for_params(K=4, M=16, base_path=base_path)
     
     if model is None:
         print("ERROR: Default model not found. Train with: python -m src.train_dynamic_rho")

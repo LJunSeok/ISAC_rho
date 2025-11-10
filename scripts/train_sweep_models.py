@@ -53,7 +53,7 @@ def train_for_M_value(M: int, seed: int = 42):
         "--sys-config", str(config_path),
         "--alpha", "0.05",
         "--lambda", "0.5",
-        "--epochs", "2",  # Fewer epochs for sweeps
+        "--epochs", "20",
         "--seed", str(seed),
         "--suffix", f"_M{M}"
     ])
@@ -87,7 +87,7 @@ def train_for_K_value(K: int, seed: int = 42):
         "--sys-config", str(config_path),
         "--alpha", "0.05",
         "--lambda", "0.5",
-        "--epochs", "2",
+        "--epochs", "20",
         "--seed", str(seed),
         "--suffix", f"_K{K}"
     ])
@@ -106,7 +106,7 @@ def main():
     
     # Train for M sweep
     print("\n[1/2] Training models for M sweep...")
-    M_values = [4, 8, 12] #, 16, 20, 24]
+    M_values = [4, 8, 12, 20, 24]
     M_success = []
     
     for M in M_values:
@@ -118,7 +118,7 @@ def main():
     
     # Train for K sweep
     print("\n[2/2] Training models for K sweep...")
-    K_values = [2, 4, 6]#, 8, 10]
+    K_values = [2, 6, 8, 10]
     K_success = []
     
     for K in K_values:

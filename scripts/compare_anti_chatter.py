@@ -28,7 +28,7 @@ def train_and_evaluate(alpha_value, lambda_trade=0.5, seed=42):
         "python", "-m", "src.train_dynamic_rho",
         "--alpha", str(alpha_value),
         "--lambda", str(lambda_trade),
-        "--epochs", "2",
+        "--epochs", "20",
         "--seed", str(seed)
     ], capture_output=False)
     
