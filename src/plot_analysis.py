@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 from src.configs import SystemConfig, ModelConfig, TrainingConfig
 from src.utils.io import load_config, load_metrics_csv, get_checkpoint_name, get_metrics_name
 from src.utils.plotting import (
-    plot_pareto_curves,
+    plot_pareto_curves_multi_lambda_real,
     plot_rho_histogram,
     plot_rho_vs_dynamics,
     plot_ablation_bars,
@@ -39,7 +39,7 @@ def generate_fixed_rho_sweep(num_points: int = 49):
     
     return sweep_data
 
-def generate_fixed_rho_sweep_for_lambda(lambda_val: float, num_points: int = 30):
+def generate_fixed_rho_sweep_for_lambda(lambda_val: float, num_points: int = 10):
     """
     Generate synthetic fixed-rho sweep data for specific lambda.
     
@@ -50,7 +50,7 @@ def generate_fixed_rho_sweep_for_lambda(lambda_val: float, num_points: int = 30)
     Returns:
         Dict mapping rho_value -> DataFrame
     """
-    rho_values = np.linspace(0.05, 0.95, num_points)
+    rho_values = np.linspace(0.01, 0.99, num_points)
     sweep_data = {}
     
     for rho in rho_values:
@@ -80,6 +80,47 @@ def generate_fixed_rho_sweep_for_lambda(lambda_val: float, num_points: int = 30)
         })
     
     return sweep_data
+
+def extract_pareto_frontier(points: pd.DataFrame) -> pd.DataFrame:
+    """
+    Extract Pareto frontier (non-dominated points).
+    
+    For Pareto optimality: maximize sum_rate, minimize crb_trace
+    A point (r1, c1) dominates (r2, c2) if r1 >= r2 AND c1 <= c2 (with at least one strict)
+    
+    Args:
+        points: DataFrame with columns [rho, sum_rate, crb_trace]
+    
+    Returns:
+        DataFrame with only Pareto-optimal points, sorted by CRB
+    """
+    pareto_points = []
+    
+    for i, row_i in points.iterrows():
+        is_dominated = False
+        
+        for j, row_j in points.iterrows():
+            if i == j:
+                continue
+            
+            # Check if row_j dominates row_i
+            # Dominates if: rate_j >= rate_i AND crb_j <= crb_i (with at least one strict)
+            if (row_j['sum_rate'] >= row_i['sum_rate'] and 
+                row_j['crb_trace'] <= row_i['crb_trace'] and
+                (row_j['sum_rate'] > row_i['sum_rate'] or row_j['crb_trace'] < row_i['crb_trace'])):
+                is_dominated = True
+                break
+        
+        if not is_dominated:
+            pareto_points.append(row_i)
+    
+    pareto_df = pd.DataFrame(pareto_points)
+    
+    # Sort by CRB (ascending) for plotting
+    if len(pareto_df) > 0:
+        pareto_df = pareto_df.sort_values('crb_trace')
+    
+    return pareto_df
 
 def plot_anti_chatter_bars(df: pd.DataFrame, save_path: Path):
     """
@@ -213,49 +254,62 @@ def main():
     analysis_df = load_metrics_csv(base_path / analysis_name)
     ablations_df = load_metrics_csv(base_path / 'ablations.csv')
     
-    # 1. Pareto curves
+    # 1. Pareto curves (multi-lambda comparison with REAL data)
     print("\n1. Generating Pareto curves...")
-    fixed_rho_sweep = generate_fixed_rho_sweep()
-    dyn_rate = metrics_dynamic['sum_rate'].mean()
-    dyn_crb = metrics_dynamic['crb_trace'].mean()
-    print(f"   Dynamic-ρ point: Rate={dyn_rate:.2f}, CRB={dyn_crb:.6f}")
-    plot_pareto_curves(metrics_dynamic, fixed_rho_sweep, plots_path / 'pareto_curves.png')
-    print("   Saved: pareto_curves.png")
-
-    #1-1 Pareto curves (multi-lambda comparison)
+    
     lambda_values = [0.01, 0.50, 0.99]
     lambda_configs = {}
     
     for lambda_val in lambda_values:
-        # Determine checkpoint name for this lambda
+        # Load REAL sweep data
+        sweep_dir = f"{lambda_val:.2f}".replace('.', 'p')
+        sweep_filename = f"pareto_sweep_l{sweep_dir}_s{train_config.seed}.csv"
+        sweep_path = base_path / sweep_filename
+        
+        if not sweep_path.exists():
+            print(f"   WARNING: Sweep data for λ={lambda_val} not found at {sweep_path}")
+            print(f"   Generate with: python -m scripts.generate_pareto_sweep --lambda-vals {lambda_val}")
+            continue
+        
+        # Load real sweep data
+        sweep_df = load_metrics_csv(sweep_path)
+        
+        # Extract Pareto frontier
+        pareto_df = extract_pareto_frontier(sweep_df)
+        
+        # Load dynamic-rho metrics
         checkpoint_name_lambda = get_checkpoint_name(
             alpha_chatter=train_config.alpha_chatter,
             lambda_trade=lambda_val,
-            seed=train_config.seed,
+            seed=train_config.seed
         )
-        
         metrics_name_lambda = get_metrics_name(checkpoint_name_lambda, 'test_metrics')
         metrics_path_lambda = base_path / metrics_name_lambda
         
         if metrics_path_lambda.exists():
             metrics_dynamic = load_metrics_csv(metrics_path_lambda)
-            fixed_sweep = generate_fixed_rho_sweep_for_lambda(lambda_val)
-            lambda_configs[lambda_val] = (metrics_dynamic, fixed_sweep)
+            
+            # Store: (all_points, pareto_frontier, dynamic_point)
+            lambda_configs[lambda_val] = {
+                'all_points': sweep_df,
+                'pareto': pareto_df,
+                'dynamic': metrics_dynamic
+            }
             
             dyn_rate = metrics_dynamic['sum_rate'].mean()
             dyn_crb = metrics_dynamic['crb_trace'].mean()
-            print(f"   λ={lambda_val:.2f}: Rate={dyn_rate:.2f}, CRB={dyn_crb:.6f}")
+            print(f"   λ={lambda_val:.2f}: Dynamic(Rate={dyn_rate:.2f}, CRB={dyn_crb:.6f}), Pareto({len(pareto_df)} points)")
         else:
-            print(f"   WARNING: Metrics for λ={lambda_val} not found at {metrics_path_lambda}")
-            print(f"   Train with: python -m src.train_dynamic_rho --lambda {lambda_val}")
+            print(f"   WARNING: Dynamic metrics for λ={lambda_val} not found")
     
     if len(lambda_configs) > 0:
-        from src.utils.plotting import plot_pareto_curves_multi_lambda
-        plot_pareto_curves_multi_lambda(lambda_configs, plots_path / 'pareto_curves.png')
+        from src.utils.plotting import plot_pareto_curves_multi_lambda_real
+        plot_pareto_curves_multi_lambda_real(lambda_configs, plots_path / 'pareto_curves.png')
         print(f"   Saved: pareto_curves.png ({len(lambda_configs)} lambda values)")
     else:
-        print("   ERROR: No lambda models found. Cannot generate Pareto plot.")
-    
+        print("   ERROR: No lambda data found. Cannot generate Pareto plot.")
+        print("   Run: python -m scripts.generate_pareto_sweep")
+
     # 2. Rho histogram
     print("\n2. Generating ρ histogram...")
     rho_values = analysis_df['rho'].values

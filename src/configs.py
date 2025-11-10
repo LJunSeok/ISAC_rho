@@ -23,8 +23,8 @@ class SystemConfig:
     carrier_freq: float = 28e9  # 28 GHz mmWave
     
     # Rho bounds (time-split constraints)
-    rho_min: float = 0.0      # Minimum sensing time fraction
-    rho_max: float = 0.4      # Maximum sensing time fraction
+    rho_min: float = 0.01      # Minimum sensing time fraction
+    rho_max: float = 0.99      # Maximum sensing time fraction
     
     # Channel parameters
     wavelength: float = dataclasses.field(init=False)
@@ -82,7 +82,7 @@ class TrainingConfig:
     target_balance: float = 0.5     # Target: scaled_CRB ≈ target_balance * Rate
 
     # Training schedule
-    epochs: int = 5             # Number of epochs
+    epochs: int = 20             # Number of epochs
     batch_size: int = 16        # Batch size (memory-efficient)
     batches_per_epoch: int = 100  # Batches per epoch
     
